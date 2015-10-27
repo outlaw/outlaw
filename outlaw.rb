@@ -11,6 +11,7 @@ class Outlaw < Formula
   depends_on 'docker-machine'
 
   def install
+    bin.install 'outlaw'
   end
 
   test do

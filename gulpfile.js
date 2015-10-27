@@ -5,7 +5,7 @@ var merge = require('merge-stream');
 var fs = require('fs');
 
 gulp.task('homebrew', function() {
-  var outlaw_version = fs.readFileSync('./VERSION')
+  var outlaw_version = fs.readFileSync('./VERSION').toString().trim();
   return gulp.src(['outlaw.rb'])
      .pipe(replace("OUTLAW_VERSION = ''", 'OUTLAW_VERSION = "' + outlaw_version + '"'))
      .pipe(gulp.dest('dist'))

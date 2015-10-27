@@ -1,25 +1,8 @@
-#!/bin/bash
 LOGFILE=/tmp/hooroo_docker_install.log
 
-function debug {
-  if [[ ! -z "${DEBUG:-}" ]] && [[ "$DEBUG" == "true" ]]; then
-    echo "[$(date)]: $*"
-  fi
-}
-
-function log {
-  echo "$*"
-}
-
-function silent_run {
-  eval "$1 > /dev/null 2>&1"
-}
-
 function log_run {
-  debug "$1"
+  log_debug "$1"
   eval "$1 > $LOGFILE 2>&1"
-  EVAL_EXIT_STATUS=$?
-  return $EVAL_EXIT_STATUS
 }
 
 function check_for_docker_machine {
@@ -27,7 +10,7 @@ function check_for_docker_machine {
 }
 
 function check_docker_works {
-  log "Checking docker works"
+  log_info "Checking docker works"
   log_run "docker ps"
   if [[ $? -ne 0 ]]; then
     echo "Error during installation"
@@ -49,20 +32,20 @@ function create_docker_machine {
 }
 
 function install_hooroo_cert {
-  log "Installing root certificate for Hooroo CA"
+  log_info "Installing root certificate for Hooroo CA"
   # Install Hooroo Root Certificate into boot2docker
   log_run "bash <(curl -s https://gist.githubusercontent.com/dekz/4c2bd630df73d71c1a03/raw/add_custom_cert_to_boot2docker.sh)"
 }
 
 function pull_test_image {
-  log "Pulling test image"
-  log_run "docker pull docker-registry.in.jqdev.net/hooroo-base-alpine:latest"
+  log_info "Pulling test image"
+  #log_run "docker pull docker-registry.in.jqdev.net/hooroo-base-alpine:latest"
 }
 
 function success {
-  silent_run "curl -o /tmp/imgcat https://raw.githubusercontent.com/gnachman/iTerm2/master/tests/imgcat"
-  silent_run "chmod +x /tmp/imgcat"
-  silent_run "curl -o  /tmp/docker_install.png http://i.imgur.com/WQZRTjF.png"
+  log_run "curl -o /tmp/imgcat https://raw.githubusercontent.com/gnachman/iTerm2/master/tests/imgcat"
+  log_run "chmod +x /tmp/imgcat"
+  log_run "curl -o  /tmp/docker_install.png http://i.imgur.com/WQZRTjF.png"
 
   /tmp/imgcat /tmp/docker_install.png
 
@@ -70,13 +53,22 @@ function success {
 
 }
 
-log "Installing Outlaw..."
-# Install latest docker and docker machine from Homebrew
-log_run "brew install docker docker-machine"
+eval "$(echo "orig_install()"; declare -f install | tail -n +2)"
+function install {
+  log_info "Installing Outlaw..."
+  orig_install
+  check_docker_works
+  install_hooroo_cert
+  pull_test_image
 
-create_docker_machine
-check_docker_works
-install_hooroo_cert
-pull_test_image
+  success
+}
 
-success
+function instructions {
+  echo -e
+  echo -e "Usage: outlaw [COMMAND] [OPTIONS]"
+  echo -e "Commands:"
+  echo -e "  $SYNC_COMMAND\t\tStart file syncing. This is the default if no COMMAND is specified."
+  echo -e "  $INSTALL_COMMAND\tInstall outlaw and all of its dependencies."
+}
+handle_command "$@"

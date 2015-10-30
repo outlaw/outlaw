@@ -1,4 +1,8 @@
 LOGFILE=/tmp/hooroo_docker_install.log
+BIN_FILE=$(realpath ${BASH_SOURCE[0]})
+INSTALL_DIR=$(realpath `dirname ${BIN_FILE}`/../)
+START_COMMAND="start"
+STOP_COMMAND="stop"
 
 function log_run {
   log_debug "$1"
@@ -19,7 +23,7 @@ function check_docker_works {
 }
 
 function create_docker_machine {
-  log "Creating docker machine"
+  log_info "Creating docker machine"
   check_for_docker_machine
   if [[ $? -ne 0 ]]; then
     log_run "docker-machine create --driver virtualbox dev"
@@ -54,14 +58,50 @@ function success {
 }
 
 eval "$(echo "orig_install()"; declare -f install | tail -n +2)"
+eval "$(echo "orig_handle_command()"; declare -f handle_command | tail -n +2)"
 function install {
   log_info "Installing Outlaw..."
   orig_install
+  create_docker_machine
   check_docker_works
   install_hooroo_cert
   pull_test_image
 
   success
+}
+
+function load_docker_environment {
+  eval "$(DEBUG=false docker-machine env dev)"
+}
+
+function ensure_docker_machine_running {
+  log_run "docker-machine start dev"
+}
+
+function start {
+  log_info "Starting Outlaw..."
+  load_docker_environment
+  ensure_docker_machine_running
+
+  if [[ ! -f "$INSTALL_DIR/docker-compose.yml" ]]; then
+    log_error "Unable to find docker-compose.yml in $INSTALL_DIR"
+    exit 1
+  fi
+
+  docker-compose -f $INSTALL_DIR/docker-compose.yml up
+}
+
+function stop {
+  log_info "Stopping Outlaw..."
+  load_docker_environment
+  ensure_docker_machine_running
+
+  if [[ ! -f "$INSTALL_DIR/docker-compose.yml" ]]; then
+    log_error "Unable to find docker-compose.yml in $INSTALL_DIR"
+    exit 1
+  fi
+
+  docker-compose -f $INSTALL_DIR/docker-compose.yml stop
 }
 
 function instructions {
@@ -70,5 +110,35 @@ function instructions {
   echo -e "Commands:"
   echo -e "  $SYNC_COMMAND\t\tStart file syncing. This is the default if no COMMAND is specified."
   echo -e "  $INSTALL_COMMAND\tInstall outlaw and all of its dependencies."
+  echo -e "  $START_COMMAND\tStart the outlaw helper containers."
+  echo -e "  $STOP_COMMAND\tStop the outlaw helper containers."
 }
+
+function handle_command {
+  echo "handling"
+  while [[ $# > 0 ]]; do
+    key="$1"
+
+    case $key in
+      "$START_COMMAND")
+        echo "start"
+        start
+        ;;
+      "$STOP_COMMAND")
+        echo "stop"
+        stop
+        ;;
+      "$INSTALL_COMMAND")
+        install
+        ;;
+      *)
+        orig_handle_command "$@"
+        ;;
+    esac
+
+    shift
+  done
+  exit 0
+}
+
 handle_command "$@"

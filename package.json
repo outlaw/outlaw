@@ -10,6 +10,8 @@
   },
   "devDependencies": {
     "gulp": "^3.9.0",
+    "gulp-gzip": "^1.2.0",
+    "gulp-tar": "^1.5.0",
     "merge-stream": "^1.0.0"
   },
   "scripts": {

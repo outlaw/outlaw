@@ -15,7 +15,7 @@ gulp.task('docker-osx-dev', function() {
 });
 
 gulp.task('compose', function() {
-  return gulp.src(['modules/docker-compose.yml'])
+  return gulp.src(['modules/outlaw.yml'])
      .pipe(gulp.dest('tmp/dist'))
 });
 

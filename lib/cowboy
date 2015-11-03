@@ -1,8 +1,12 @@
 LOGFILE=/tmp/hooroo_docker_install.log
 BIN_FILE=$(realpath ${BASH_SOURCE[0]})
 INSTALL_DIR=$(realpath `dirname ${BIN_FILE}`/../)
+COMPOSE_FILE="outlaw.yml"
 START_COMMAND="start"
 STOP_COMMAND="stop"
+LOGS_COMMAND="logs"
+STATUS_COMMAND="status"
+VIRTUAL_TLD="dev"
 
 function log_run {
   log_debug "$1"
@@ -57,6 +61,13 @@ function success {
 
 }
 
+function bifbam {
+  log_debug "bifbam"
+  IP=$(DEBUG=false docker-machine ip dev)
+  sudo route -n add 172.17.0.0/16 ${IP}
+  sudo sh -c "echo 'nameserver ${IP}' > /etc/resolver/$VIRTUAL_TLD"
+}
+
 eval "$(echo "orig_install()"; declare -f install | tail -n +2)"
 eval "$(echo "orig_handle_command()"; declare -f handle_command | tail -n +2)"
 function install {
@@ -66,6 +77,7 @@ function install {
   check_docker_works
   install_hooroo_cert
   pull_test_image
+  bifbam
 
   success
 }
@@ -78,30 +90,32 @@ function ensure_docker_machine_running {
   log_run "docker-machine start dev"
 }
 
-function start {
-  log_info "Starting Outlaw..."
+function compose_run {
   load_docker_environment
   ensure_docker_machine_running
-
-  if [[ ! -f "$INSTALL_DIR/docker-compose.yml" ]]; then
-    log_error "Unable to find docker-compose.yml in $INSTALL_DIR"
+  if [[ ! -f "$INSTALL_DIR/$COMPOSE_FILE" ]]; then
+    log_error "Unable to find $COMPOSE_FILE $INSTALL_DIR"
     exit 1
   fi
+  docker-compose -f $INSTALL_DIR/$COMPOSE_FILE "$1"
+}
 
-  docker-compose -f $INSTALL_DIR/docker-compose.yml up
+function start {
+  log_info "Starting Outlaw..."
+  compose_run "start"
 }
 
 function stop {
   log_info "Stopping Outlaw..."
-  load_docker_environment
-  ensure_docker_machine_running
+  compose_run "stop"
+}
 
-  if [[ ! -f "$INSTALL_DIR/docker-compose.yml" ]]; then
-    log_error "Unable to find docker-compose.yml in $INSTALL_DIR"
-    exit 1
-  fi
+function status {
+  compose_run "ps"
+}
 
-  docker-compose -f $INSTALL_DIR/docker-compose.yml stop
+function outlaw_logs {
+  compose_run "logs"
 }
 
 function instructions {
@@ -109,27 +123,32 @@ function instructions {
   echo -e "Usage: outlaw [COMMAND] [OPTIONS]"
   echo -e "Commands:"
   echo -e "  $SYNC_COMMAND\t\tStart file syncing. This is the default if no COMMAND is specified."
-  echo -e "  $INSTALL_COMMAND\tInstall outlaw and all of its dependencies."
-  echo -e "  $START_COMMAND\tStart the outlaw helper containers."
-  echo -e "  $STOP_COMMAND\tStop the outlaw helper containers."
+  echo -e "  $INSTALL_COMMAND\t\tInstall outlaw and all of its dependencies."
+  echo -e "  $START_COMMAND\t\tStart the outlaw helper containers."
+  echo -e "  $STOP_COMMAND\t\tStop the outlaw helper containers."
+  echo -e "  $STATUS_COMMAND\tStatus of the outlaw helper containers."
+  echo -e "  $LOGS_COMMAND\t\tLogs of the outlaw helper containers."
 }
 
 function handle_command {
-  echo "handling"
   while [[ $# > 0 ]]; do
     key="$1"
 
     case $key in
       "$START_COMMAND")
-        echo "start"
         start
         ;;
       "$STOP_COMMAND")
-        echo "stop"
         stop
         ;;
       "$INSTALL_COMMAND")
         install
+        ;;
+      "$STATUS_COMMAND")
+        status
+        ;;
+      "$LOGS_COMMAND")
+        outlaw_logs
         ;;
       *)
         orig_handle_command "$@"

@@ -14,7 +14,7 @@ class Outlaw < Formula
 
   def install
     bin.install 'bin/outlaw'
-    prefix.install 'docker-compose.yml'
+    prefix.install 'outlaw.yml'
   end
 
   def post_install

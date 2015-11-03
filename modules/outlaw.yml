@@ -1,0 +1,23 @@
+dns:
+  image: andyshinn/dnsmasq
+  environment:
+    VIRTUAL_HOST: dns
+  privileged: true
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+#  ports:
+#    - "53:53/udp"
+  cap_add:
+    - NET_ADMIN
+  ports:
+    - "192.168.99.100:53:53/tcp"
+    - "192.168.99.100:53:53/udp"
+  cap_add:
+    - NET_ADMIN
+  command: --address=/dev/192.168.99.100
+nginx:
+  image: jwilder/nginx-proxy
+  ports:
+    - "80:80"
+  volumes:
+    - /var/run/docker.sock:/tmp/docker.sock:ro

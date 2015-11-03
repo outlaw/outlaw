@@ -15,6 +15,7 @@ class Outlaw < Formula
   def install
     bin.install 'bin/outlaw'
     prefix.install 'outlaw.yml'
+    prefix.install 'bootsync.sh'
   end
 
   def post_install

@@ -42,7 +42,10 @@ function create_docker_machine {
 function install_hooroo_cert {
   log_info "Installing root certificate for Hooroo CA"
   # Install Hooroo Root Certificate into boot2docker
-  log_run "bash <(curl -s https://gist.githubusercontent.com/dekz/4c2bd630df73d71c1a03/raw/add_custom_cert_to_boot2docker.sh)"
+  log_run "docker-machine scp $INSTALL_DIR/bootsync.sh dev:/tmp/bootsync.sh"
+  log_run "docker-machine ssh dev \"sudo mv /tmp/bootsync.sh /var/lib/boot2docker/bootsync.sh\""
+  log_run "docker-machine restart dev"
+#  log_run "bash <(curl -s https://gist.githubusercontent.com/dekz/4c2bd630df73d71c1a03/raw/add_custom_cert_to_boot2docker.sh)"
 }
 
 function pull_test_image {
@@ -74,8 +77,8 @@ function install {
   log_info "Installing Outlaw..."
   orig_install
   create_docker_machine
-  check_docker_works
   install_hooroo_cert
+  check_docker_works
   pull_test_image
   bifbam
 

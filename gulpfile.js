@@ -14,8 +14,8 @@ gulp.task('docker-osx-dev', function() {
      .pipe(gulp.dest('tmp'))
 });
 
-gulp.task('compose', function() {
-  return gulp.src(['modules/outlaw.yml'])
+gulp.task('docker', function() {
+  return gulp.src(['modules/outlaw.yml', 'modules/bootsync.sh'])
      .pipe(gulp.dest('tmp/dist'))
 });
 
@@ -30,7 +30,7 @@ gulp.task('build', ['cowboy', 'docker-osx-dev'], function() {
      .pipe(gulp.dest('tmp/dist/bin'))
 });
 
-gulp.task('package', ['build', 'compose'], function() {
+gulp.task('package', ['build', 'docker'], function() {
   return gulp.src('tmp/dist/**/*')
         .pipe(tar('outlaw.tar'))
         .pipe(gzip())

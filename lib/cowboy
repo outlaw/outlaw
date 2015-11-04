@@ -7,6 +7,7 @@ STOP_COMMAND="stop"
 LOGS_COMMAND="logs"
 STATUS_COMMAND="status"
 UP_COMMAND="up"
+RUN_COMMAND="run"
 VIRTUAL_TLD="dev"
 
 function log_run {
@@ -152,6 +153,8 @@ function instructions {
 }
 
 function handle_command {
+  local docker_compose_file="docker-compose.yml"
+
   while [[ $# > 0 ]]; do
     key="$1"
 
@@ -171,8 +174,13 @@ function handle_command {
       "$LOGS_COMMAND")
         outlaw_logs
         ;;
-      "$UP_COMMAND")
-        docker-compose $@
+      -f|--file)
+        docker_compose_file=$2
+        shift
+        ;;
+      "$UP_COMMAND"|"$RUN_COMMAND")
+        docker-compose -f $docker_compose_file $@
+        exit 0
         ;;
       *)
         orig_handle_command "$@"

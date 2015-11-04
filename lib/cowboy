@@ -178,7 +178,12 @@ function handle_command {
         docker_compose_file=$2
         shift
         ;;
-      "$UP_COMMAND"|"$RUN_COMMAND")
+      "$RUN_COMMAND")
+        shift # pop run
+        docker-compose -f $docker_compose_file run --service-ports $@
+        exit 0
+        ;;
+      "$UP_COMMAND")
         docker-compose -f $docker_compose_file $@
         exit 0
         ;;

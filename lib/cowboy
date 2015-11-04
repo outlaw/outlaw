@@ -6,7 +6,7 @@ START_COMMAND="start"
 STOP_COMMAND="stop"
 LOGS_COMMAND="logs"
 STATUS_COMMAND="status"
-UP_COMMAND="UP"
+UP_COMMAND="up"
 VIRTUAL_TLD="dev"
 
 function log_run {
@@ -23,20 +23,22 @@ function try_times {
   n=0
   until [ $n -ge 5 ]
   do
-     log_run $1 && break
-     n=$[$n+1]
+     eval $1 && break
      sleep 3
+     n=$[$n+1]
   done
 }
 
-function wait_for_docker {
+function start_and_load_docker_machine {
   log_run "docker-machine start dev"
-  try_times "docker ps"
+  eval "$(DEBUG=false docker-machine env dev)"
 }
 
 function check_docker_works {
   log_info "Checking docker works"
-  wait_for_docker
+  start_and_load_docker_machine
+  try_times "docker ps"
+
   log_run "docker ps"
   if [[ $? -ne 0 ]]; then
     echo "Error during installation"
@@ -52,18 +54,15 @@ function create_docker_machine {
     echo 'Consider adding eval "$(docker-machine env dev)" to your shell profile script'
     echo "Docker host is: $(docker-machine ip dev)"
   fi
-
-  log_run "docker-machine start dev"
-  eval "$(DEBUG=false docker-machine env dev)"
+  start_and_load_docker_machine
 }
 
-function install_hooroo_cert {
+function install_boot_sync {
   log_info "Installing root certificate for Hooroo CA"
   # Install Hooroo Root Certificate into boot2docker
   log_run "docker-machine scp $INSTALL_DIR/bootsync.sh dev:/tmp/bootsync.sh"
   log_run "docker-machine ssh dev \"sudo mv /tmp/bootsync.sh /var/lib/boot2docker/bootsync.sh\""
   log_run "docker-machine restart dev"
-#  log_run "bash <(curl -s https://gist.githubusercontent.com/dekz/4c2bd630df73d71c1a03/raw/add_custom_cert_to_boot2docker.sh)"
 }
 
 function pull_test_image {
@@ -72,7 +71,6 @@ function pull_test_image {
 }
 
 function success {
-  echo "Successfully installed"
   log_run "curl -o /tmp/imgcat https://raw.githubusercontent.com/gnachman/iTerm2/master/tests/imgcat"
   log_run "chmod +x /tmp/imgcat"
   log_run "curl -o  /tmp/docker_install.png http://i.imgur.com/WQZRTjF.png"
@@ -97,7 +95,7 @@ function install {
   log_info "Installing Outlaw..."
   orig_install
   create_docker_machine
-  install_hooroo_cert
+  install_boot_sync
   check_docker_works
   pull_test_image
   bifbam
@@ -174,7 +172,7 @@ function handle_command {
         outlaw_logs
         ;;
       "$UP_COMMAND")
-        log_run "docker-compose $@"
+        docker-compose $@
         ;;
       *)
         orig_handle_command "$@"

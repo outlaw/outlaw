@@ -47,5 +47,9 @@ gulp.task('homebrew', ['package'], function() {
      .pipe(gulp.dest('dist'))
 });
 
+gulp.task('pull_latest_docker_osx_dev', function() {
+  child_process.execSync('cd modules && wget https://raw.githubusercontent.com/brikis98/docker-osx-dev/master/src/docker-osx-dev')
+});
+
 gulp.task('dist', ['homebrew'], function() { });
 gulp.task('default', ['dist'], function(){});

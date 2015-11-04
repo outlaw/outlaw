@@ -6,10 +6,12 @@ START_COMMAND="start"
 STOP_COMMAND="stop"
 LOGS_COMMAND="logs"
 STATUS_COMMAND="status"
+UP_COMMAND="UP"
 VIRTUAL_TLD="dev"
 
 function log_run {
-  log_debug "$1"
+  log_info "$1"
+  echo "$1" > $LOGFILE
   eval "$1 > $LOGFILE 2>&1"
 }
 
@@ -17,8 +19,24 @@ function check_for_docker_machine {
   log_run "docker-machine ls | grep dev"
 }
 
+function try_times {
+  n=0
+  until [ $n -ge 5 ]
+  do
+     log_run $1 && break
+     n=$[$n+1]
+     sleep 3
+  done
+}
+
+function wait_for_docker {
+  log_run "docker-machine start dev"
+  try_times "docker ps"
+}
+
 function check_docker_works {
   log_info "Checking docker works"
+  wait_for_docker
   log_run "docker ps"
   if [[ $? -ne 0 ]]; then
     echo "Error during installation"
@@ -54,6 +72,7 @@ function pull_test_image {
 }
 
 function success {
+  echo "Successfully installed"
   log_run "curl -o /tmp/imgcat https://raw.githubusercontent.com/gnachman/iTerm2/master/tests/imgcat"
   log_run "chmod +x /tmp/imgcat"
   log_run "curl -o  /tmp/docker_install.png http://i.imgur.com/WQZRTjF.png"
@@ -65,10 +84,11 @@ function success {
 }
 
 function bifbam {
-  log_debug "bifbam"
+  log_info "Installing outlaw containers"
   IP=$(DEBUG=false docker-machine ip dev)
   sudo route -n add 172.17.0.0/16 ${IP}
   sudo sh -c "echo 'nameserver ${IP}' > /etc/resolver/$VIRTUAL_TLD"
+  log_info "Installing outlaw complete"
 }
 
 eval "$(echo "orig_install()"; declare -f install | tail -n +2)"
@@ -152,6 +172,9 @@ function handle_command {
         ;;
       "$LOGS_COMMAND")
         outlaw_logs
+        ;;
+      "$UP_COMMAND")
+        log_run "docker-compose $@"
         ;;
       *)
         orig_handle_command "$@"

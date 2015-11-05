@@ -12,7 +12,7 @@ dns:
     - "53:53/udp"
   cap_add:
     - NET_ADMIN
-  command: --address=/dev/192.168.99.100
+  command: --address=/${VIRTUAL_TLD}/${DOCKER_IP}
 
 nginx:
   image: jwilder/nginx-proxy

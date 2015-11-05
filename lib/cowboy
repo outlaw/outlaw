@@ -9,17 +9,38 @@ STATUS_COMMAND="status"
 UP_COMMAND="up"
 RUN_COMMAND="run"
 ENTER_COMMAND="enter"
-VIRTUAL_TLD="dev"
-DOCKER_MACHINE_NAME="dev"
+
+VIRTUAL_TLD=${VIRTUAL_TLD:-dev}
+DOCKER_MACHINE=${DOCKER_MACHINE:-dev}
+
+copy_function() {
+  test -n "$(declare -f $1)" || return 
+  eval "${_/$1/$2}"
+}
+
+rename_function() {
+  copy_function $@ || return
+  unset -f $1
+}
+
+# Hijacked functions
+copy_function install orig_install
+copy_function handle_command orig_handle_command
+copy_function do_log orig_do_log
+
+function do_log() {
+  echo -e "$@" > $LOGFILE
+  orig_do_log "$@"
+}
+
+function run {
+  log_info "$1"
+  eval "$1" > $LOGFILE
+}
 
 function log_run {
   log_info "$1"
-  echo "$1" > $LOGFILE
-  eval "$1 > $LOGFILE 2>&1"
-}
-
-function check_for_docker_machine {
-  log_run "docker-machine ls | grep $DOCKER_MACHINE_NAME"
+  eval "$1"
 }
 
 function try_times {
@@ -32,14 +53,25 @@ function try_times {
   done
 }
 
-function start_and_load_docker_machine {
-  log_run "docker-machine start $DOCKER_MACHINE_NAME"
-  eval "$(DEBUG=false docker-machine env $DOCKER_MACHINE_NAME)"
+function check_for_docker_machine {
+  log_run "docker-machine ls | grep $DOCKER_MACHINE"
+}
+
+function ensure_docker_machine_running {
+  docker-machine status $DOCKER_MACHINE | grep "Running" > /dev/null
+  if [[ $? -ne 0 ]]; then
+    log_run "docker-machine start $DOCKER_MACHINE"
+  fi
+}
+
+function load_docker_environment {
+  ensure_docker_machine_running
+  eval "$(DEBUG=false docker-machine env $DOCKER_MACHINE)"
 }
 
 function check_docker_works {
   log_info "Checking docker works"
-  start_and_load_docker_machine
+  load_docker_environment
   try_times "docker ps"
 
   log_run "docker ps"
@@ -53,24 +85,23 @@ function create_docker_machine {
   log_info "Creating docker machine"
   check_for_docker_machine
   if [[ $? -ne 0 ]]; then
-    log_run "docker-machine create --driver virtualbox $DOCKER_MACHINE_NAME"
-    echo "Consider adding eval '\$(docker-machine env $DOCKER_MACHINE_NAME)' to your shell profile script"
-    echo "Docker host is: $(docker-machine ip $DOCKER_MACHINE_NAME)"
+    log_run "docker-machine create --driver virtualbox $DOCKER_MACHINE"
+    echo "Consider adding eval '\$(docker-machine env $DOCKER_MACHINE)' to your shell profile script"
+    echo "Docker host is: $(docker-machine ip $DOCKER_MACHINE)"
   fi
-  start_and_load_docker_machine
+  load_docker_environment
 }
 
 function install_boot_sync {
   log_info "Installing root certificate for Hooroo CA"
   # Install Hooroo Root Certificate into boot2docker
-  log_run "docker-machine scp $INSTALL_DIR/bootsync.sh $DOCKER_MACHINE_NAME:/tmp/bootsync.sh"
-  log_run "docker-machine ssh $DOCKER_MACHINE_NAME \"sudo mv /tmp/bootsync.sh /var/lib/boot2docker/bootsync.sh\""
-  log_run "docker-machine restart $DOCKER_MACHINE_NAME"
+  log_run "docker-machine scp $INSTALL_DIR/bootsync.sh $DOCKER_MACHINE:/tmp/bootsync.sh"
+  log_run "docker-machine ssh $DOCKER_MACHINE \"sudo mv /tmp/bootsync.sh /var/lib/boot2docker/bootsync.sh\""
+  log_run "docker-machine restart $DOCKER_MACHINE"
 }
 
 function pull_test_image {
   log_info "Pulling test image"
-  #log_run "docker pull docker-registry.in.jqdev.net/hooroo-base-alpine:latest"
 }
 
 function success {
@@ -85,15 +116,19 @@ function success {
 }
 
 function bifbam {
-  log_info "Installing outlaw containers"
-  IP=$(DEBUG=false docker-machine ip $DOCKER_MACHINE_NAME)
-  sudo route -n add 172.17.0.0/16 ${IP}
-  sudo sh -c "echo 'nameserver ${IP}' > /etc/resolver/$VIRTUAL_TLD"
-  log_info "Installing outlaw complete"
+  IP=$(DEBUG=false docker-machine ip $DOCKER_MACHINE)
+  #sudo route -n add 172.17.0.0/16 ${IP}
+
+  if [[ ! -f "/etc/resolver/$VIRTUAL_TLD" ]]; then
+    sudo sh -c "echo 'nameserver ${IP}' > /etc/resolver/$VIRTUAL_TLD"
+  fi
+
+  cat /etc/resolver/$VIRTUAL_TLD | grep ${IP}
+  if [[ $? -ne 0 ]]; then
+    sudo sh -c "echo 'nameserver ${IP}' > /etc/resolver/$VIRTUAL_TLD"
+  fi
 }
 
-eval "$(echo "orig_install()"; declare -f install | tail -n +2)"
-eval "$(echo "orig_handle_command()"; declare -f handle_command | tail -n +2)"
 function install {
   log_info "Installing Outlaw..."
   orig_install
@@ -101,32 +136,28 @@ function install {
   install_boot_sync
   check_docker_works
   pull_test_image
+
+  log_info "Installing outlaw containers"
   bifbam
 
   success
 }
 
-function load_docker_environment {
-  eval "$(DEBUG=false docker-machine env $DOCKER_MACHINE_NAME)"
-}
-
-function ensure_docker_machine_running {
-  log_run "docker-machine start $DOCKER_MACHINE_NAME"
-}
 
 function compose_run {
   load_docker_environment
-  ensure_docker_machine_running
   if [[ ! -f "$INSTALL_DIR/$COMPOSE_FILE" ]]; then
     log_error "Unable to find $COMPOSE_FILE $INSTALL_DIR"
     exit 1
   fi
-  DOCKER_IP=$(DEBUG=false docker-machine ip $DOCKER_MACHINE_NAME) VIRTUAL_TLD=$VIRTUAL_TLD docker-compose -f $INSTALL_DIR/$COMPOSE_FILE "$1"
+  run "DOCKER_IP=$(DEBUG=false docker-machine ip $DOCKER_MACHINE) VIRTUAL_TLD=$VIRTUAL_TLD docker-compose -f $INSTALL_DIR/$COMPOSE_FILE $@"
 }
 
 function start {
   log_info "Starting Outlaw..."
-  compose_run "start"
+
+  bifbam
+  compose_run "up -d"
 }
 
 function stop {
@@ -152,6 +183,9 @@ function instructions {
   echo -e "  $STOP_COMMAND\t\tStop the outlaw helper containers."
   echo -e "  $STATUS_COMMAND\tStatus of the outlaw helper containers."
   echo -e "  $LOGS_COMMAND\t\tLogs of the outlaw helper containers."
+  echo -e "  $ENTER_COMMAND\t\t"
+  echo -e "  $UP_COMMAND\t\t"
+  echo -e "  $RUN_COMMAND\t\t"
 }
 
 function handle_command {
@@ -180,13 +214,17 @@ function handle_command {
         docker_compose_file=$2
         shift
         ;;
+      "$SYNC_COMMAND")
+        log_info "Performing sync in $(pwd)"
+        orig_handle_command "$@"
+        ;;
       "$RUN_COMMAND")
         shift # pop run
-        docker-compose -f $docker_compose_file run --service-ports $@
+        log_run "docker-compose -f $docker_compose_file run --service-ports $@"
         exit 0
         ;;
       "$UP_COMMAND")
-        docker-compose -f $docker_compose_file $@
+        log_run "docker-compose -f $docker_compose_file $@"
         exit 0
         ;;
       "$ENTER_COMMAND")

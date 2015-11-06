@@ -220,13 +220,18 @@ function handle_command {
       "$RUN_COMMAND")
         shift # pop run
         local readonly dc_cmd="docker-compose -f $docker_compose_file run --service-ports $@"
+
+        start
         log_run "$dc_cmd"
         exit 0
         ;;
       "$UP_COMMAND")
+        local readonly dc_stop_cmd="docker-compose -f $docker_compose_file stop"
         local readonly dc_cmd="docker-compose -f $docker_compose_file $@"
+
+        start
         orig_handle_command "sync-only"
-        trap 'kill %1; kill %2' SIGINT
+        trap "kill %1; $dc_stop_cmd" SIGINT
 
         orig_handle_command "watch-only" & PIDWATCH=$!
         log_run "$dc_cmd"

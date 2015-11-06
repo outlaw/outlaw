@@ -34,33 +34,34 @@ function do_log() {
 }
 
 function run {
-  log_info "$1"
-  eval "$1" > $LOGFILE
+  log_debug "$@"
+  eval "$@" 2>&1 | log_debug
 }
 
 function log_run {
-  log_info "$1"
-  eval "$1"
+  log_info "$@"
+  eval "$@"
 }
 
 function try_times {
   n=0
   until [ $n -ge 5 ]
   do
-     eval $1 && break
+     run "$@" && break
      sleep 3
      n=$[$n+1]
   done
 }
 
 function check_for_docker_machine {
-  log_run "docker-machine ls | grep $DOCKER_MACHINE"
+  run "docker-machine ls | grep $DOCKER_MACHINE"
 }
 
 function ensure_docker_machine_running {
-  docker-machine status $DOCKER_MACHINE | grep "Running" > /dev/null
+  local readonly status=$(docker-machine status $DOCKER_MACHINE 2>&1)
+  test "$status" = "Running"
   if [[ $? -ne 0 ]]; then
-    log_run "docker-machine start $DOCKER_MACHINE"
+    run "docker-machine start $DOCKER_MACHINE"
   fi
 }
 
@@ -70,11 +71,11 @@ function load_docker_environment {
 }
 
 function check_docker_works {
-  log_info "Checking docker works"
+  log_info "Testing Docker installation"
   load_docker_environment
   try_times "docker ps"
 
-  log_run "docker ps"
+  run "docker ps"
   if [[ $? -ne 0 ]]; then
     echo "Error during installation"
     exit 1
@@ -85,19 +86,19 @@ function create_docker_machine {
   log_info "Creating docker machine"
   check_for_docker_machine
   if [[ $? -ne 0 ]]; then
-    log_run "docker-machine create --driver virtualbox $DOCKER_MACHINE"
+    run "docker-machine create --driver virtualbox $DOCKER_MACHINE"
     echo "Consider adding eval '\$(docker-machine env $DOCKER_MACHINE)' to your shell profile script"
-    echo "Docker host is: $(docker-machine ip $DOCKER_MACHINE)"
+    echo "Docker host is: $(docker-machine inspect --format="{{.Driver.IPAddress}}" $DOCKER_MACHINE)"
   fi
   load_docker_environment
 }
 
 function install_boot_sync {
-  log_info "Installing root certificate for Hooroo CA"
+  log_info "Installing Root Certificate for Hooroo CA"
   # Install Hooroo Root Certificate into boot2docker
-  log_run "docker-machine scp $INSTALL_DIR/bootsync.sh $DOCKER_MACHINE:/tmp/bootsync.sh"
-  log_run "docker-machine ssh $DOCKER_MACHINE \"sudo mv /tmp/bootsync.sh /var/lib/boot2docker/bootsync.sh\""
-  log_run "docker-machine restart $DOCKER_MACHINE"
+  run "docker-machine scp $INSTALL_DIR/bootsync.sh $DOCKER_MACHINE:/tmp/bootsync.sh"
+  run "docker-machine ssh $DOCKER_MACHINE \"sudo mv /tmp/bootsync.sh /var/lib/boot2docker/bootsync.sh\""
+  run "docker-machine restart $DOCKER_MACHINE"
 }
 
 function pull_test_image {
@@ -105,27 +106,27 @@ function pull_test_image {
 }
 
 function success {
-  log_run "curl -o /tmp/imgcat https://raw.githubusercontent.com/gnachman/iTerm2/master/tests/imgcat"
-  log_run "chmod +x /tmp/imgcat"
-  log_run "curl -o  /tmp/docker_install.png http://i.imgur.com/WQZRTjF.png"
+  run "curl -o /tmp/imgcat https://raw.githubusercontent.com/gnachman/iTerm2/master/tests/imgcat"
+  run "chmod +x /tmp/imgcat"
+  run "curl -o  /tmp/docker_install.png http://i.imgur.com/WQZRTjF.png"
 
   /tmp/imgcat /tmp/docker_install.png
 
   echo "Successfully installed"
-
 }
 
 function bifbam {
-  IP=$(DEBUG=false docker-machine ip $DOCKER_MACHINE)
+  local readonly ip=$(docker-machine inspect --format="{{.Driver.IPAddress}}" $DOCKER_MACHINE)
   #sudo route -n add 172.17.0.0/16 ${IP}
 
-  if [[ ! -f "/etc/resolver/$VIRTUAL_TLD" ]]; then
-    sudo sh -c "echo 'nameserver ${IP}' > /etc/resolver/$VIRTUAL_TLD"
+  local readonly tld_file="/etc/resolver/${VIRTUAL_TLD}"
+  if [[ ! -f "$tld_file" ]]; then
+    sudo sh -c "echo 'nameserver ${ip}' > $tld_file"
   fi
 
-  cat /etc/resolver/$VIRTUAL_TLD | grep ${IP}
+  run "cat $tld_file | grep $ip"
   if [[ $? -ne 0 ]]; then
-    sudo sh -c "echo 'nameserver ${IP}' > /etc/resolver/$VIRTUAL_TLD"
+    run "sudo sh -c \"echo 'nameserver $ip' > $tld_file\""
   fi
 }
 
@@ -137,7 +138,7 @@ function install {
   check_docker_works
   pull_test_image
 
-  log_info "Installing outlaw containers"
+  log_info "Installing Outlaw Containers"
   bifbam
 
   success
@@ -150,7 +151,9 @@ function compose_run {
     log_error "Unable to find $COMPOSE_FILE $INSTALL_DIR"
     exit 1
   fi
-  run "DOCKER_IP=$(DEBUG=false docker-machine ip $DOCKER_MACHINE) VIRTUAL_TLD=$VIRTUAL_TLD docker-compose -f $INSTALL_DIR/$COMPOSE_FILE $@"
+
+  local readonly ip=$(docker-machine inspect --format="{{.Driver.IPAddress}}" $DOCKER_MACHINE)
+  run "DOCKER_IP=$ip VIRTUAL_TLD=$VIRTUAL_TLD docker-compose -f $INSTALL_DIR/$COMPOSE_FILE $@"
 }
 
 function start {
@@ -214,17 +217,20 @@ function handle_command {
         docker_compose_file=$2
         shift
         ;;
-      "$SYNC_COMMAND")
-        log_info "Performing sync in $(pwd)"
-        orig_handle_command "$@"
-        ;;
       "$RUN_COMMAND")
         shift # pop run
-        log_run "docker-compose -f $docker_compose_file run --service-ports $@"
+        local readonly dc_cmd="docker-compose -f $docker_compose_file run --service-ports $@"
+        log_run "$dc_cmd"
         exit 0
         ;;
       "$UP_COMMAND")
-        log_run "docker-compose -f $docker_compose_file $@"
+        local readonly dc_cmd="docker-compose -f $docker_compose_file $@"
+        orig_handle_command "sync-only"
+        trap 'kill %1; kill %2' SIGINT
+
+        orig_handle_command "watch-only" & PIDWATCH=$!
+        log_run "$dc_cmd"
+
         exit 0
         ;;
       "$ENTER_COMMAND")

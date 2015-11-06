@@ -10,6 +10,7 @@ var fs            = require('fs'),
 
 gulp.task('docker-osx-dev', function() {
   return gulp.src(['modules/docker-osx-dev'])
+     .pipe(replace(/readonly RSYNC_FLAGS.*/g, 'readonly RSYNC_FLAGS="--archive --delete --omit-dir-times --inplace --whole-file -l"'))
      .pipe(replace('handle_command "$@"', ''))
      .pipe(gulp.dest('tmp'))
 });

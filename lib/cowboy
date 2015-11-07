@@ -1,4 +1,4 @@
-LOGFILE=/tmp/hooroo_docker_install.log
+LOGFILE=/tmp/outlaw.log
 BIN_FILE=$(realpath ${BASH_SOURCE[0]})
 INSTALL_DIR=$(realpath `dirname ${BIN_FILE}`/../)
 COMPOSE_FILE="outlaw.yml"
@@ -222,7 +222,19 @@ function handle_command {
         local readonly dc_cmd="docker-compose -f $docker_compose_file run --service-ports $@"
 
         start
+        orig_handle_command "sync-only"
+        orig_handle_command "watch-only" & PIDWATCH=$!
+
+        cleanup() {
+          run "kill $PIDWATCH 2>&1"
+          run "kill -HUP 0 2>&1"
+        }
+
+        trap cleanup EXIT TERM SIGINT
+
         log_run "$dc_cmd"
+
+        cleanup
         exit 0
         ;;
       "$UP_COMMAND")
@@ -231,10 +243,19 @@ function handle_command {
 
         start
         orig_handle_command "sync-only"
-        trap "kill %1; $dc_stop_cmd" SIGINT
-
         orig_handle_command "watch-only" & PIDWATCH=$!
+
+        cleanup() {
+          run "kill $PIDWATCH 2>&1"
+          run $dc_stop_cmd
+          run "kill -HUP 0 2>&1"
+        }
+
+        trap cleanup EXIT TERM SIGINT
+
         log_run "$dc_cmd"
+
+        cleanup
 
         exit 0
         ;;

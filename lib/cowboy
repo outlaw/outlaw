@@ -59,8 +59,8 @@ function check_for_docker_machine {
 
 function ensure_docker_machine_running {
   local readonly status=$(docker-machine status $DOCKER_MACHINE 2>&1)
-  test "$status" = "Running"
-  if [[ $? -ne 0 ]]; then
+  if [[ ! $status = "Running" ]]; then
+    log_debug "ensure running status: $status"
     run "docker-machine start $DOCKER_MACHINE"
   fi
 }
@@ -75,8 +75,7 @@ function check_docker_works {
   load_docker_environment
   try_times "docker ps"
 
-  run "docker ps"
-  if [[ $? -ne 0 ]]; then
+  if ! run "docker ps"; then
     echo "Error during installation"
     exit 1
   fi
@@ -84,8 +83,7 @@ function check_docker_works {
 
 function create_docker_machine {
   log_info "Creating docker machine"
-  check_for_docker_machine
-  if [[ $? -ne 0 ]]; then
+  if ! check_for_docker_machine; then
     run "docker-machine create --driver virtualbox $DOCKER_MACHINE"
     echo "Consider adding eval '\$(docker-machine env $DOCKER_MACHINE)' to your shell profile script"
     echo "Docker host is: $(docker-machine inspect --format="{{.Driver.IPAddress}}" $DOCKER_MACHINE)"
@@ -124,8 +122,7 @@ function bifbam {
     sudo sh -c "echo 'nameserver ${ip}' > $tld_file"
   fi
 
-  run "cat $tld_file | grep $ip"
-  if [[ $? -ne 0 ]]; then
+  if ! run "cat $tld_file | grep $ip"; then
     run "sudo sh -c \"echo 'nameserver $ip' > $tld_file\""
   fi
 }
@@ -159,7 +156,9 @@ function compose_run {
 function start {
   log_info "Starting Outlaw..."
 
+  ensure_docker_machine_running
   bifbam
+
   compose_run "up -d"
 }
 
